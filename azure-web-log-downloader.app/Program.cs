@@ -156,6 +156,7 @@ return;
 static IConfigurationRoot BuildConfiguration(string projectName, string? configPath)
 {
     var baseDirectory = Directory.GetCurrentDirectory();
+    var executableDirectory = AppContext.BaseDirectory;
     var currentDirectoryConfigPath = Path.Combine(baseDirectory, $".{projectName}");
     var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
     var homeDirectoryConfigPath = string.IsNullOrWhiteSpace(homeDirectory)
@@ -163,20 +164,19 @@ static IConfigurationRoot BuildConfiguration(string projectName, string? configP
         : Path.Combine(homeDirectory, $".{projectName}");
     var configurationBuilder = new ConfigurationBuilder()
         .SetBasePath(baseDirectory)
-        // Lowest precedence: scaffold defaults.
-        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+        // Lowest precedence: scaffold defaults in working directory.
+        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+        // Also load defaults bundled next to the app binaries.
+        .AddJsonFile(Path.Combine(executableDirectory, "appsettings.json"), optional: true, reloadOnChange: false);
 
     // Global default config in the user's home directory.
-    if (!string.IsNullOrWhiteSpace(homeDirectoryConfigPath) && File.Exists(homeDirectoryConfigPath))
+    if (!string.IsNullOrWhiteSpace(homeDirectoryConfigPath))
     {
-        configurationBuilder.AddJsonFile(homeDirectoryConfigPath, optional: false, reloadOnChange: false);
+        configurationBuilder.AddJsonFile(homeDirectoryConfigPath, optional: true, reloadOnChange: false);
     }
 
     // Project-local default config (e.g. ./.azure-web-log-downloader).
-    if (File.Exists(currentDirectoryConfigPath))
-    {
-        configurationBuilder.AddJsonFile(currentDirectoryConfigPath, optional: false, reloadOnChange: false);
-    }
+    configurationBuilder.AddJsonFile(currentDirectoryConfigPath, optional: true, reloadOnChange: false);
 
     // Explicit config path takes precedence over default files.
     if (!string.IsNullOrWhiteSpace(configPath))
