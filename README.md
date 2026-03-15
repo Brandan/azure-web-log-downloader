@@ -9,6 +9,50 @@ Scaffold for a .NET command-line app focused on downloading Azure App Service we
 - Full identifier used: `net.thelloyds.azure-web-log-downloader`
 - Target framework in scaffold: `.NET 8` (`net8.0`)
 
+## Publish Single Executable (Trimmed)
+
+Use the publish helper to produce a trimmed, self-contained, single executable:
+
+```bash
+bash scripts/publish-single-file.sh
+```
+
+Optional arguments:
+
+```bash
+bash scripts/publish-single-file.sh <RID> <Configuration> <OutputDir>
+```
+
+Example:
+
+```bash
+bash scripts/publish-single-file.sh osx-x64 Release ./publish/osx-x64
+```
+
+## Configuration Resolution Order
+
+At startup, configuration is loaded in this order (later sources override earlier sources):
+
+1. `appsettings.json` (optional)
+2. `~/.azure-web-log-downloader` (optional global default config)
+3. `./.azure-web-log-downloader` (optional project-local default config)
+4. `--config <path>` file (optional explicit config)
+5. environment variables
+
+CLI arguments such as `--mode`, `--start`, and `--end` then override runtime behavior after config is loaded.
+
+## Example Default Config File
+
+An example default config file is provided at:
+
+- `.azure-web-log-downloader.config.example`
+
+Copy it to `./.azure-web-log-downloader` and fill in your values:
+
+```bash
+cp .azure-web-log-downloader.config.example .azure-web-log-downloader
+```
+
 ## Prompt And Description Used
 
 The following is the full prompt/description provided when creating this project:

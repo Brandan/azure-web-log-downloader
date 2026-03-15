@@ -2,8 +2,10 @@ using AzureWebLogDownloader.Configuration;
 using AzureWebLogDownloader.Services;
 using Microsoft.Extensions.Configuration;
 
+const string ProjectName = "azure-web-log-downloader";
+
 var cliOptions = ParseCliOptions(args);
-var configuration = BuildConfiguration(cliOptions.ConfigPath);
+var configuration = BuildConfiguration(ProjectName, cliOptions.ConfigPath);
 
 var webLogOptions = new WebLogOptions();
 configuration.GetSection("Azure:WebLogs").Bind(webLogOptions);
@@ -151,23 +153,40 @@ logger.Info(
 
 return;
 
-static IConfigurationRoot BuildConfiguration(string? configPath)
+static IConfigurationRoot BuildConfiguration(string projectName, string? configPath)
 {
     var baseDirectory = Directory.GetCurrentDirectory();
-    var configFileName = "appsettings.json";
-    var optional = true;
+    var currentDirectoryConfigPath = Path.Combine(baseDirectory, $".{projectName}");
+    var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    var homeDirectoryConfigPath = string.IsNullOrWhiteSpace(homeDirectory)
+        ? null
+        : Path.Combine(homeDirectory, $".{projectName}");
+    var configurationBuilder = new ConfigurationBuilder()
+        .SetBasePath(baseDirectory)
+        // Lowest precedence: scaffold defaults.
+        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
 
-    if (!string.IsNullOrWhiteSpace(configPath))
+    // Global default config in the user's home directory.
+    if (!string.IsNullOrWhiteSpace(homeDirectoryConfigPath) && File.Exists(homeDirectoryConfigPath))
     {
-        baseDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath))
-            ?? Directory.GetCurrentDirectory();
-        configFileName = Path.GetFileName(configPath);
-        optional = false;
+        configurationBuilder.AddJsonFile(homeDirectoryConfigPath, optional: false, reloadOnChange: false);
     }
 
-    return new ConfigurationBuilder()
-        .SetBasePath(baseDirectory)
-        .AddJsonFile(configFileName, optional: optional, reloadOnChange: false)
+    // Project-local default config (e.g. ./.azure-web-log-downloader).
+    if (File.Exists(currentDirectoryConfigPath))
+    {
+        configurationBuilder.AddJsonFile(currentDirectoryConfigPath, optional: false, reloadOnChange: false);
+    }
+
+    // Explicit config path takes precedence over default files.
+    if (!string.IsNullOrWhiteSpace(configPath))
+    {
+        var fullConfigPath = Path.GetFullPath(configPath);
+        configurationBuilder.AddJsonFile(fullConfigPath, optional: false, reloadOnChange: false);
+    }
+
+    return configurationBuilder
+        // Highest precedence for file-based settings.
         .AddEnvironmentVariables()
         .Build();
 }
