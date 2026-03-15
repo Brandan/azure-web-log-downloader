@@ -7,6 +7,12 @@ using Microsoft.Extensions.FileProviders.Physical;
 const string ProjectName = "azure-web-log-downloader";
 
 var cliOptions = ParseCliOptions(args);
+if (cliOptions.ShowHelp)
+{
+    PrintHelp();
+    return;
+}
+
 var configuration = BuildConfiguration(ProjectName, cliOptions.ConfigPath);
 var configSourceDescriptions = DescribeConfigurationSources(ProjectName, cliOptions.ConfigPath);
 if (cliOptions.Verbose)
@@ -269,6 +275,7 @@ static CliOptions ParseCliOptions(string[] args)
     DateTime? endDateUtc = null;
     var verbose = false;
     var showProgress = false;
+    var showHelp = false;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -299,6 +306,11 @@ static CliOptions ParseCliOptions(string[] args)
                 showProgress = true;
                 break;
 
+            case "--help":
+            case "-h":
+                showHelp = true;
+                break;
+
             default:
                 ExitWithCliError($"Unknown argument: {arg}");
                 break;
@@ -316,7 +328,8 @@ static CliOptions ParseCliOptions(string[] args)
         startDateUtc,
         endDateUtc,
         verbose,
-        showProgress);
+        showProgress,
+        showHelp);
 }
 
 static CliMode ParseMode(string mode)
@@ -360,7 +373,33 @@ static string ReadValue(string[] args, ref int index, string argumentName)
 static void ExitWithCliError(string message)
 {
     Console.Error.WriteLine($"CLI validation failed: {message}");
+    Console.Error.WriteLine("Use --help to see available options.");
     Environment.Exit(1);
+}
+
+static void PrintHelp()
+{
+    Console.WriteLine(
+        """
+        azure-web-log-downloader
+
+        Usage:
+          azure-web-log-downloader [options]
+
+        Options:
+          --mode <daily|weekly>   Download mode (default: daily)
+          --start <yyyy-MM-dd>    Inclusive UTC start date
+          --end <yyyy-MM-dd>      Inclusive UTC end date
+          --config <path>         Explicit config file path
+          --progress              Show live download progress
+          --verbose               Show info/debug logs
+          --help, -h              Show this help output
+
+        Examples:
+          azure-web-log-downloader --mode daily
+          azure-web-log-downloader --mode weekly --config ~/.azure-web-log-downloader
+          azure-web-log-downloader --start 2026-03-14 --end 2026-03-14 --progress
+        """);
 }
 
 internal sealed class ConsoleProgressReporter
@@ -420,4 +459,5 @@ internal sealed record CliOptions(
     DateTime? StartDateUtc,
     DateTime? EndDateUtc,
     bool Verbose,
-    bool ShowProgress);
+    bool ShowProgress,
+    bool ShowHelp);
