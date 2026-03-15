@@ -5,20 +5,22 @@ namespace AzureWebLogDownloader.Services;
 public sealed class OperationalLogger : IDisposable
 {
     private readonly string? _filePath;
+    private readonly bool _verbose;
     private readonly object _fileLock = new();
 
-    private OperationalLogger(string? filePath)
+    private OperationalLogger(string? filePath, bool verbose)
     {
         _filePath = filePath;
+        _verbose = verbose;
     }
 
-    public static OperationalLogger Create(WebLogOptions options)
+    public static OperationalLogger Create(WebLogOptions options, bool verbose = false)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         if (!options.EnableFileLogging)
         {
-            return new OperationalLogger(filePath: null);
+            return new OperationalLogger(filePath: null, verbose);
         }
 
         var baseDirectory = string.IsNullOrWhiteSpace(options.SaveAllBlobsDirectory)
@@ -34,7 +36,7 @@ public sealed class OperationalLogger : IDisposable
             Directory.CreateDirectory(parentDirectory);
         }
 
-        return new OperationalLogger(fullPath);
+        return new OperationalLogger(fullPath, verbose);
     }
 
     public void Info(string eventName, string message) => Write("INFO", eventName, message);
@@ -49,7 +51,10 @@ public sealed class OperationalLogger : IDisposable
 
         if (level == "INFO")
         {
-            Console.WriteLine(line);
+            if (_verbose)
+            {
+                Console.WriteLine(line);
+            }
         }
         else
         {

@@ -10,6 +10,7 @@ public sealed class WebLogDownloadService
         string outputRootDirectory,
         IReadOnlyCollection<BlobDownloadCandidate> matchedBlobs,
         string? fileNamePattern = null,
+        Action<DownloadProgressUpdate>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(outputRootDirectory))
@@ -23,9 +24,12 @@ public sealed class WebLogDownloadService
         var writesByLogicalKey = new Dictionary<string, PersistedLogFile>(StringComparer.Ordinal);
         var overwrittenInRun = 0;
 
+        var totalFiles = matchedBlobs.Count;
+        var fileNumber = 0;
         foreach (var matchedBlob in matchedBlobs)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            fileNumber++;
 
             var timestamp = matchedBlob.Match.TimestampUtc;
             var yearDirectory = Path.Combine(rootPath, timestamp.Year.ToString("D4"));
@@ -42,11 +46,28 @@ public sealed class WebLogDownloadService
             }
 
             var blobClient = matchedBlob.ContainerClient.GetBlobClient(matchedBlob.Match.BlobPath);
+            var totalBytes = matchedBlob.ContentLength;
+            progress?.Invoke(new DownloadProgressUpdate(fileNumber, totalFiles, fileName, 0, totalBytes, IsFileCompleted: false));
             await using (var sourceStream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
             await using (var destinationStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                await sourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
+                var buffer = new byte[81920];
+                long bytesCopied = 0;
+                int bytesRead;
+                while ((bytesRead = await sourceStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    await destinationStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                    bytesCopied += bytesRead;
+                    progress?.Invoke(new DownloadProgressUpdate(fileNumber, totalFiles, fileName, bytesCopied, totalBytes, IsFileCompleted: false));
+                }
             }
+            progress?.Invoke(new DownloadProgressUpdate(
+                fileNumber,
+                totalFiles,
+                fileName,
+                totalBytes ?? 0,
+                totalBytes,
+                IsFileCompleted: true));
 
             writesByLogicalKey[logicalKey] = new PersistedLogFile(logicalKey, filePath, timestamp, matchedBlob.Match.BlobPath);
         }
@@ -77,4 +98,13 @@ public sealed record PersistenceResult(
 
 public sealed record BlobDownloadCandidate(
     BlobContainerClient ContainerClient,
-    BlobPathMatch Match);
+    BlobPathMatch Match,
+    long? ContentLength);
+
+public sealed record DownloadProgressUpdate(
+    int FileNumber,
+    int TotalFiles,
+    string FileName,
+    long BytesCopied,
+    long? TotalBytes,
+    bool IsFileCompleted);

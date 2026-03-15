@@ -9,8 +9,11 @@ const string ProjectName = "azure-web-log-downloader";
 var cliOptions = ParseCliOptions(args);
 var configuration = BuildConfiguration(ProjectName, cliOptions.ConfigPath);
 var configSourceDescriptions = DescribeConfigurationSources(ProjectName, cliOptions.ConfigPath);
-Console.WriteLine(
-    $"{DateTime.UtcNow:O} [INFO] config.sources {string.Join(" | ", configSourceDescriptions)}");
+if (cliOptions.Verbose)
+{
+    Console.WriteLine(
+        $"{DateTime.UtcNow:O} [INFO] config.sources {string.Join(" | ", configSourceDescriptions)}");
+}
 
 var webLogOptions = new WebLogOptions();
 configuration.GetSection("Azure:WebLogs").Bind(webLogOptions);
@@ -28,7 +31,7 @@ if (validationErrors.Count > 0)
     return;
 }
 
-using var logger = OperationalLogger.Create(webLogOptions);
+using var logger = OperationalLogger.Create(webLogOptions, cliOptions.Verbose);
 var runStartedAt = DateTime.UtcNow;
 logger.Info(
     "run.start",
@@ -100,7 +103,7 @@ for (var index = 0; index < sourceTargets.Count; index++)
             }
 
             matchedInRangeCount++;
-            matchedCandidates.Add(new BlobDownloadCandidate(source.ContainerClient, blobMatch));
+            matchedCandidates.Add(new BlobDownloadCandidate(source.ContainerClient, blobMatch, blobItem.Properties.ContentLength));
         }
 
         logger.Info(
@@ -138,13 +141,15 @@ logger.Info(
     $"matchedCandidates={matchedCandidates.Count} logicalKeys={resolved.Count} conflictPolicy=templateOrderThenPath");
 
 var persistenceService = new WebLogDownloadService();
+var progressReporter = cliOptions.ShowProgress ? new ConsoleProgressReporter() : null;
 PersistenceResult persistence;
 try
 {
     persistence = await persistenceService.PersistAsync(
         webLogOptions.SaveAllBlobsDirectory!,
         resolved,
-        webLogOptions.FileNamePattern);
+        webLogOptions.FileNamePattern,
+        progressReporter is null ? null : progressReporter.Report);
 }
 catch (Exception ex)
 {
@@ -262,6 +267,8 @@ static CliOptions ParseCliOptions(string[] args)
     string? configPath = null;
     DateTime? startDateUtc = null;
     DateTime? endDateUtc = null;
+    var verbose = false;
+    var showProgress = false;
 
     for (var i = 0; i < args.Length; i++)
     {
@@ -284,6 +291,14 @@ static CliOptions ParseCliOptions(string[] args)
                 configPath = ReadValue(args, ref i, arg);
                 break;
 
+            case "--verbose":
+                verbose = true;
+                break;
+
+            case "--progress":
+                showProgress = true;
+                break;
+
             default:
                 ExitWithCliError($"Unknown argument: {arg}");
                 break;
@@ -299,7 +314,9 @@ static CliOptions ParseCliOptions(string[] args)
         mode,
         configPath,
         startDateUtc,
-        endDateUtc);
+        endDateUtc,
+        verbose,
+        showProgress);
 }
 
 static CliMode ParseMode(string mode)
@@ -346,8 +363,61 @@ static void ExitWithCliError(string message)
     Environment.Exit(1);
 }
 
+internal sealed class ConsoleProgressReporter
+{
+    private readonly object _lock = new();
+    private DateTime _lastRenderAt = DateTime.MinValue;
+    private int _lastRenderedLength;
+
+    public void Report(DownloadProgressUpdate update)
+    {
+        lock (_lock)
+        {
+            if (!update.IsFileCompleted && DateTime.UtcNow - _lastRenderAt < TimeSpan.FromMilliseconds(120))
+            {
+                return;
+            }
+
+            _lastRenderAt = DateTime.UtcNow;
+            var totalBytes = update.TotalBytes.HasValue ? FormatBytes(update.TotalBytes.Value) : "?";
+            var copiedBytes = FormatBytes(update.BytesCopied);
+            var percent = update.TotalBytes is > 0
+                ? $" {(update.BytesCopied * 100.0 / update.TotalBytes.Value):0.0}%"
+                : string.Empty;
+            var line = $"[progress] file {update.FileNumber}/{update.TotalFiles} {update.FileName} {copiedBytes}/{totalBytes}{percent}";
+            if (line.Length < _lastRenderedLength)
+            {
+                line = line + new string(' ', _lastRenderedLength - line.Length);
+            }
+
+            _lastRenderedLength = line.Length;
+            Console.Error.Write($"\r{line}");
+            if (update.IsFileCompleted && update.FileNumber == update.TotalFiles)
+            {
+                Console.Error.WriteLine();
+            }
+        }
+    }
+
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        var size = (double)value;
+        var suffixIndex = 0;
+        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
+        {
+            size /= 1024;
+            suffixIndex++;
+        }
+
+        return $"{size:0.#}{suffixes[suffixIndex]}";
+    }
+}
+
 internal sealed record CliOptions(
     CliMode Mode,
     string? ConfigPath,
     DateTime? StartDateUtc,
-    DateTime? EndDateUtc);
+    DateTime? EndDateUtc,
+    bool Verbose,
+    bool ShowProgress);
