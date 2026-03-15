@@ -12,6 +12,8 @@ public sealed class WebLogOptions
 
     public string? SaveAllBlobsDirectory { get; init; }
 
+    public string FileNamePattern { get; init; } = "{instance}-{yyyyMMdd_HHmm}.log";
+
     public int DefaultDailyLookbackDays { get; init; } = 1;
 
     public int DefaultWeeklyLookbackDays { get; init; } = 7;
@@ -42,6 +44,11 @@ public sealed class WebLogOptions
         if (string.IsNullOrWhiteSpace(SaveAllBlobsDirectory))
         {
             errors.Add("Azure:WebLogs:SaveAllBlobsDirectory is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(FileNamePattern))
+        {
+            errors.Add("Azure:WebLogs:FileNamePattern is required.");
         }
 
         if (DefaultDailyLookbackDays <= 0)

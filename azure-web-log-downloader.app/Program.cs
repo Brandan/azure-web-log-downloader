@@ -6,6 +6,9 @@ const string ProjectName = "azure-web-log-downloader";
 
 var cliOptions = ParseCliOptions(args);
 var configuration = BuildConfiguration(ProjectName, cliOptions.ConfigPath);
+var configSourceDescriptions = DescribeConfigurationSources(ProjectName, cliOptions.ConfigPath);
+Console.WriteLine(
+    $"{DateTime.UtcNow:O} [INFO] config.sources {string.Join(" | ", configSourceDescriptions)}");
 
 var webLogOptions = new WebLogOptions();
 configuration.GetSection("Azure:WebLogs").Bind(webLogOptions);
@@ -127,7 +130,10 @@ var persistenceService = new WebLogDownloadService();
 PersistenceResult persistence;
 try
 {
-    persistence = await persistenceService.PersistAsync(webLogOptions.SaveAllBlobsDirectory!, resolved);
+    persistence = await persistenceService.PersistAsync(
+        webLogOptions.SaveAllBlobsDirectory!,
+        resolved,
+        webLogOptions.FileNamePattern);
 }
 catch (Exception ex)
 {
@@ -189,6 +195,33 @@ static IConfigurationRoot BuildConfiguration(string projectName, string? configP
         // Highest precedence for file-based settings.
         .AddEnvironmentVariables()
         .Build();
+}
+
+static IReadOnlyList<string> DescribeConfigurationSources(string projectName, string? configPath)
+{
+    var baseDirectory = Directory.GetCurrentDirectory();
+    var executableDirectory = AppContext.BaseDirectory;
+    var currentDirectoryConfigPath = Path.Combine(baseDirectory, $".{projectName}");
+    var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    var homeDirectoryConfigPath = string.IsNullOrWhiteSpace(homeDirectory)
+        ? null
+        : Path.Combine(homeDirectory, $".{projectName}");
+
+    var sources = new List<string>
+    {
+        $"workingDir/appsettings.json(optional): {Path.Combine(baseDirectory, "appsettings.json")}",
+        $"executableDir/appsettings.json(optional): {Path.Combine(executableDirectory, "appsettings.json")}",
+        $"home default(optional): {homeDirectoryConfigPath ?? "<none>"}",
+        $"workingDir default(optional): {currentDirectoryConfigPath}"
+    };
+
+    if (!string.IsNullOrWhiteSpace(configPath))
+    {
+        sources.Add($"explicit --config(required): {Path.GetFullPath(configPath)}");
+    }
+
+    sources.Add("environment variables");
+    return sources;
 }
 
 static CliOptions ParseCliOptions(string[] args)

@@ -13,6 +13,7 @@
         "w3c/{instance}/{yyyy}/{MM}/{dd}/{HH}/{filename}.log"
       ],
       "SaveAllBlobsDirectory": "./logs",
+      "FileNamePattern": "{instance}-{yyyyMMdd_HHmm}.log",
       "DefaultDailyLookbackDays": 1,
       "DefaultWeeklyLookbackDays": 7,
       "EnableFileLogging": false,

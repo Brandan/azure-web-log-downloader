@@ -7,6 +7,7 @@ public sealed class WebLogDownloadService
     public async Task<PersistenceResult> PersistAsync(
         string outputRootDirectory,
         IReadOnlyCollection<BlobPathMatch> matchedBlobs,
+        string? fileNamePattern = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(outputRootDirectory))
@@ -28,7 +29,7 @@ public sealed class WebLogDownloadService
             var yearDirectory = Path.Combine(rootPath, timestamp.Year.ToString("D4"));
             Directory.CreateDirectory(yearDirectory);
 
-            var fileName = _fileNameBuilder.BuildFileName(matchedBlob.Instance, timestamp);
+            var fileName = _fileNameBuilder.BuildFileName(matchedBlob.Instance, timestamp, fileNamePattern);
             var filePath = Path.Combine(yearDirectory, fileName);
             var logicalKey = _fileNameBuilder.BuildLogicalKey(matchedBlob.Instance, timestamp);
 
