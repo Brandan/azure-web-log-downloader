@@ -35,20 +35,20 @@ Update the file after completing each sub-task, not just after completing an ent
 
 ## Tasks
 
-- [ ] 0.0 Create feature branch
-  - [ ] 0.1 Create and checkout a new branch for this feature (for example `git checkout -b feature/azure-blob-weblog-sync`)
-  - [ ] 0.2 Confirm branch is active and clean before implementation work begins
-- [ ] 1.0 Define CLI contract and configuration model for Azure weblog sync
-  - [ ] 1.1 Define CLI options for `--mode daily|weekly`, `--start`, `--end`, and `--config` in `Program.cs`
-  - [ ] 1.2 Add a strongly typed `Azure:WebLogs` options model with all required properties from the PRD
-  - [ ] 1.3 Bind and validate configuration at startup with clear validation errors for missing critical settings
-  - [ ] 1.4 Add/update sample `appsettings.json` values showing multiple container URLs, prefixes, and ordered path templates
-- [ ] 2.0 Implement Azure blob source discovery with auth-priority fallback
-  - [ ] 2.1 Add Azure SDK dependencies in the app project if they are not already present
-  - [ ] 2.2 Implement client factory logic that tries connection string first when configured and valid
-  - [ ] 2.3 Implement fallback to `DefaultAzureCredential` when connection string is absent/invalid
-  - [ ] 2.4 Support iterating across multiple configured container URLs and prefixes in one run
-  - [ ] 2.5 Add explicit, actionable errors for common Azure failures (403, missing container, credential issues)
+- [x] 0.0 Create feature branch
+  - [x] 0.1 Create and checkout a new branch for this feature (for example `git checkout -b feature/azure-blob-weblog-sync`)
+  - [x] 0.2 Confirm branch is active and clean before implementation work begins
+- [x] 1.0 Define CLI contract and configuration model for Azure weblog sync
+  - [x] 1.1 Define CLI options for `--mode daily|weekly`, `--start`, `--end`, and `--config` in `Program.cs`
+  - [x] 1.2 Add a strongly typed `Azure:WebLogs` options model with all required properties from the PRD
+  - [x] 1.3 Bind and validate configuration at startup with clear validation errors for missing critical settings
+  - [x] 1.4 Add/update sample `appsettings.json` values showing multiple container URLs, prefixes, and ordered path templates
+- [x] 2.0 Implement Azure blob source discovery with auth-priority fallback
+  - [x] 2.1 Add Azure SDK dependencies in the app project if they are not already present
+  - [x] 2.2 Implement client factory logic that tries connection string first when configured and valid
+  - [x] 2.3 Implement fallback to `DefaultAzureCredential` when connection string is absent/invalid
+  - [x] 2.4 Support iterating across multiple configured container URLs and prefixes in one run
+  - [x] 2.5 Add explicit, actionable errors for common Azure failures (403, missing container, credential issues)
 - [ ] 3.0 Implement date-scope filtering and ordered blob path-template resolution
   - [ ] 3.1 Implement date range resolver for daily default (yesterday), weekly default (last 7 days), and explicit start/end inputs
   - [ ] 3.2 Implement path template resolver that evaluates templates in configured order
