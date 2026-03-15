@@ -21,8 +21,7 @@ if (cliOptions.Verbose)
         $"{DateTime.UtcNow:O} [INFO] config.sources {string.Join(" | ", configSourceDescriptions)}");
 }
 
-var webLogOptions = new WebLogOptions();
-configuration.GetSection("Azure:WebLogs").Bind(webLogOptions);
+var webLogOptions = BindWebLogOptions(configuration);
 
 var validationErrors = webLogOptions.Validate();
 if (validationErrors.Count > 0)
@@ -400,6 +399,51 @@ static void PrintHelp()
           azure-web-log-downloader --mode weekly --config ~/.azure-web-log-downloader
           azure-web-log-downloader --start 2026-03-14 --end 2026-03-14 --progress
         """);
+}
+
+static WebLogOptions BindWebLogOptions(IConfiguration configuration)
+{
+    var section = configuration.GetSection("Azure:WebLogs");
+    return new WebLogOptions
+    {
+        ConnectionString = section["ConnectionString"],
+        BlobContainerUrls = ReadList(section, "BlobContainerUrls"),
+        PathPrefixes = ReadList(section, "PathPrefixes"),
+        BlobPathTemplates = ReadList(section, "BlobPathTemplates"),
+        SaveAllBlobsDirectory = section["SaveAllBlobsDirectory"],
+        FileNamePattern = ReadStringOrDefault(section, "FileNamePattern", "{instance}-{yyyyMMdd_HHmm}.log"),
+        DefaultDailyLookbackDays = ReadIntOrDefault(section, "DefaultDailyLookbackDays", 1),
+        DefaultWeeklyLookbackDays = ReadIntOrDefault(section, "DefaultWeeklyLookbackDays", 7),
+        EnableFileLogging = ReadBoolOrDefault(section, "EnableFileLogging", false),
+        FileLogPath = section["FileLogPath"]
+    };
+}
+
+static List<string> ReadList(IConfigurationSection section, string key)
+{
+    return section
+        .GetSection(key)
+        .GetChildren()
+        .Select(child => child.Value)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value!.Trim())
+        .ToList();
+}
+
+static int ReadIntOrDefault(IConfigurationSection section, string key, int defaultValue)
+{
+    return int.TryParse(section[key], out var parsed) ? parsed : defaultValue;
+}
+
+static bool ReadBoolOrDefault(IConfigurationSection section, string key, bool defaultValue)
+{
+    return bool.TryParse(section[key], out var parsed) ? parsed : defaultValue;
+}
+
+static string ReadStringOrDefault(IConfigurationSection section, string key, string defaultValue)
+{
+    var value = section[key];
+    return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
 }
 
 internal sealed class ConsoleProgressReporter
