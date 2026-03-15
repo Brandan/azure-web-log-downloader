@@ -29,6 +29,16 @@ if (cliOptions.StartDateUtc is not null || cliOptions.EndDateUtc is not null)
     Console.WriteLine($"Date range override: {cliOptions.StartDateUtc:yyyy-MM-dd} -> {cliOptions.EndDateUtc:yyyy-MM-dd}");
 }
 Console.WriteLine($"Configured local log root: {webLogOptions.SaveAllBlobsDirectory}");
+
+var dateRangeResolver = new DateRangeResolver();
+var dateRange = dateRangeResolver.Resolve(
+    cliOptions.Mode,
+    cliOptions.StartDateUtc,
+    cliOptions.EndDateUtc,
+    webLogOptions);
+Console.WriteLine(
+    $"Resolved date range ({dateRange.Source}): {dateRange.StartDateUtc:yyyy-MM-dd} -> {dateRange.EndDateUtc:yyyy-MM-dd}");
+
 var blobClientFactory = new AzureBlobClientFactory();
 var sourceTargets = blobClientFactory.BuildSourceTargets(webLogOptions);
 Console.WriteLine($"Resolved source targets: {sourceTargets.Count}");
@@ -41,6 +51,23 @@ if (sourceTargets.Count > 0)
         .Count();
     Console.WriteLine($"Azure auth mode: {authMode}; containers: {uniqueContainers}; prefixes: {webLogOptions.PathPrefixes.Count}");
 }
+
+var templateResolver = new BlobPathTemplateResolver();
+var sampleBlobPath = BuildSampleBlobPath(webLogOptions.PathPrefixes, dateRange.EndDateUtc);
+if (templateResolver.TryResolve(
+    sampleBlobPath,
+    webLogOptions.BlobPathTemplates,
+    out var sampleMatch,
+    traceLogger: Console.WriteLine))
+{
+    var resolved = templateResolver.ResolveDeterministicConflicts([sampleMatch!]);
+    Console.WriteLine($"Deterministic conflict strategy active: prefer lowest template order, then blob path sort. Keys resolved: {resolved.Count}");
+}
+else
+{
+    Console.WriteLine("No template match for sample path. Check Azure:WebLogs:BlobPathTemplates order and token structure.");
+}
+
 Console.WriteLine("Next step: implement download workflow services from task list.");
 
 return;
@@ -68,7 +95,7 @@ static IConfigurationRoot BuildConfiguration(string? configPath)
 
 static CliOptions ParseCliOptions(string[] args)
 {
-    var mode = "daily";
+    var mode = CliMode.Daily;
     string? configPath = null;
     DateTime? startDateUtc = null;
     DateTime? endDateUtc = null;
@@ -79,12 +106,7 @@ static CliOptions ParseCliOptions(string[] args)
         switch (arg)
         {
             case "--mode":
-                mode = ReadValue(args, ref i, arg);
-                if (!mode.Equals("daily", StringComparison.OrdinalIgnoreCase) &&
-                    !mode.Equals("weekly", StringComparison.OrdinalIgnoreCase))
-                {
-                    ExitWithCliError("Invalid --mode. Supported values are: daily, weekly.");
-                }
+                mode = ParseMode(ReadValue(args, ref i, arg));
                 break;
 
             case "--start":
@@ -111,10 +133,26 @@ static CliOptions ParseCliOptions(string[] args)
     }
 
     return new CliOptions(
-        mode.ToLowerInvariant(),
+        mode,
         configPath,
         startDateUtc,
         endDateUtc);
+}
+
+static CliMode ParseMode(string mode)
+{
+    if (mode.Equals("daily", StringComparison.OrdinalIgnoreCase))
+    {
+        return CliMode.Daily;
+    }
+
+    if (mode.Equals("weekly", StringComparison.OrdinalIgnoreCase))
+    {
+        return CliMode.Weekly;
+    }
+
+    ExitWithCliError("Invalid --mode. Supported values are: daily, weekly.");
+    return CliMode.Daily;
 }
 
 static DateTime ParseDate(string value, string argumentName)
@@ -139,6 +177,15 @@ static string ReadValue(string[] args, ref int index, string argumentName)
     return args[valueIndex];
 }
 
+static string BuildSampleBlobPath(IReadOnlyList<string> pathPrefixes, DateTime dateUtc)
+{
+    var prefix = pathPrefixes.Count > 0
+        ? pathPrefixes[0].TrimEnd('/')
+        : "SAMPLE-INSTANCE";
+
+    return $"{prefix}/{dateUtc:yyyy}/{dateUtc:MM}/{dateUtc:dd}/{dateUtc:HH}/sample.log";
+}
+
 static void ExitWithCliError(string message)
 {
     Console.Error.WriteLine($"CLI validation failed: {message}");
@@ -146,7 +193,7 @@ static void ExitWithCliError(string message)
 }
 
 internal sealed record CliOptions(
-    string Mode,
+    CliMode Mode,
     string? ConfigPath,
     DateTime? StartDateUtc,
     DateTime? EndDateUtc);

@@ -49,12 +49,12 @@ Update the file after completing each sub-task, not just after completing an ent
   - [x] 2.3 Implement fallback to `DefaultAzureCredential` when connection string is absent/invalid
   - [x] 2.4 Support iterating across multiple configured container URLs and prefixes in one run
   - [x] 2.5 Add explicit, actionable errors for common Azure failures (403, missing container, credential issues)
-- [ ] 3.0 Implement date-scope filtering and ordered blob path-template resolution
-  - [ ] 3.1 Implement date range resolver for daily default (yesterday), weekly default (last 7 days), and explicit start/end inputs
-  - [ ] 3.2 Implement path template resolver that evaluates templates in configured order
-  - [ ] 3.3 Ensure resolver supports both known current path layout and legacy/new layouts without code changes
-  - [ ] 3.4 Define deterministic conflict behavior when multiple templates or blobs map to the same logical minute key
-  - [ ] 3.5 Log which template matched for traceability in troubleshooting scenarios
+- [x] 3.0 Implement date-scope filtering and ordered blob path-template resolution
+  - [x] 3.1 Implement date range resolver for daily default (yesterday), weekly default (last 7 days), and explicit start/end inputs
+  - [x] 3.2 Implement path template resolver that evaluates templates in configured order
+  - [x] 3.3 Ensure resolver supports both known current path layout and legacy/new layouts without code changes
+  - [x] 3.4 Define deterministic conflict behavior when multiple templates or blobs map to the same logical minute key
+  - [x] 3.5 Log which template matched for traceability in troubleshooting scenarios
 - [ ] 4.0 Implement local file persistence layout, naming, and idempotent overwrite behavior
   - [ ] 4.1 Implement root output directory handling using `SaveAllBlobsDirectory`
   - [ ] 4.2 Implement per-year subdirectory creation under the output root
