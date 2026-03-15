@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace AzureWebLogDownloader.Tests;
 
 public class SanityTests

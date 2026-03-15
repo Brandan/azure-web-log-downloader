@@ -72,18 +72,18 @@ public sealed class AzureBlobClientFactory
                 "Check the configured BlobContainerUrls and container names.",
                 ex);
         }
-        catch (AuthenticationFailedException ex)
-        {
-            throw new InvalidOperationException(
-                "DefaultAzureCredential authentication failed. Sign in with Azure CLI (`az login`) " +
-                "or configure managed identity/environment credentials before running the downloader.",
-                ex);
-        }
         catch (CredentialUnavailableException ex)
         {
             throw new InvalidOperationException(
                 "No Azure credential source was available for DefaultAzureCredential. " +
                 "Set environment credentials, use managed identity, or provide a valid connection string.",
+                ex);
+        }
+        catch (AuthenticationFailedException ex)
+        {
+            throw new InvalidOperationException(
+                "DefaultAzureCredential authentication failed. Sign in with Azure CLI (`az login`) " +
+                "or configure managed identity/environment credentials before running the downloader.",
                 ex);
         }
     }
@@ -136,9 +136,7 @@ public sealed class AzureBlobClientFactory
             blobServiceClient = new BlobServiceClient(connectionString.Trim());
             return true;
         }
-        catch (Exception) when (
-            // Invalid connection strings should not halt execution; fallback is required.
-            true)
+        catch (Exception)
         {
             return false;
         }

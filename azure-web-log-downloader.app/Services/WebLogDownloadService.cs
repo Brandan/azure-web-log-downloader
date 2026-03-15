@@ -52,8 +52,8 @@ public sealed class WebLogDownloadService
         return new PersistenceResult(
             rootPath,
             persistedFiles,
-            writtenCount: persistedFiles.Count,
-            overwrittenCount: overwrittenInRun);
+            WrittenCount: persistedFiles.Count,
+            OverwrittenCount: overwrittenInRun);
     }
 }
 

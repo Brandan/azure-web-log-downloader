@@ -64,9 +64,9 @@ public sealed class BlobPathTemplateResolver
         return resolved;
     }
 
-    private static bool TryMatchTemplate(string blobPath, string template, int templateOrder, out BlobPathMatch? match)
+    private static bool TryMatchTemplate(string blobPath, string template, int templateOrder, out BlobPathMatch match)
     {
-        match = null;
+        match = default!;
         var regexPattern = BuildRegexPattern(template);
         var regex = new Regex(regexPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
         var regexMatch = regex.Match(blobPath);
