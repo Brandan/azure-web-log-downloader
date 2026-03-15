@@ -55,12 +55,12 @@ Update the file after completing each sub-task, not just after completing an ent
   - [x] 3.3 Ensure resolver supports both known current path layout and legacy/new layouts without code changes
   - [x] 3.4 Define deterministic conflict behavior when multiple templates or blobs map to the same logical minute key
   - [x] 3.5 Log which template matched for traceability in troubleshooting scenarios
-- [ ] 4.0 Implement local file persistence layout, naming, and idempotent overwrite behavior
-  - [ ] 4.1 Implement root output directory handling using `SaveAllBlobsDirectory`
-  - [ ] 4.2 Implement per-year subdirectory creation under the output root
-  - [ ] 4.3 Implement filename generation format `{instance}-{yyyyMMdd_HHmm}.log`
-  - [ ] 4.4 Implement logical key behavior based on `(instance, datetime)` and overwrite when key already exists
-  - [ ] 4.5 Ensure reruns for the same date range do not create duplicate logical files
+- [x] 4.0 Implement local file persistence layout, naming, and idempotent overwrite behavior
+  - [x] 4.1 Implement root output directory handling using `SaveAllBlobsDirectory`
+  - [x] 4.2 Implement per-year subdirectory creation under the output root
+  - [x] 4.3 Implement filename generation format `{instance}-{yyyyMMdd_HHmm}.log`
+  - [x] 4.4 Implement logical key behavior based on `(instance, datetime)` and overwrite when key already exists
+  - [x] 4.5 Ensure reruns for the same date range do not create duplicate logical files
 - [ ] 5.0 Add operational logging, actionable error handling, and optional file logging toggle
   - [ ] 5.1 Add structured console progress logs for run start/end, container/prefix scanning, and download counts
   - [ ] 5.2 Add warning/error logs that include context needed to diagnose failures quickly

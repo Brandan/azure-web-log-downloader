@@ -54,14 +54,36 @@ if (sourceTargets.Count > 0)
 
 var templateResolver = new BlobPathTemplateResolver();
 var sampleBlobPath = BuildSampleBlobPath(webLogOptions.PathPrefixes, dateRange.EndDateUtc);
+var sampleBlobPathConflict = BuildSampleBlobPath(webLogOptions.PathPrefixes, dateRange.EndDateUtc, suffix: "sample-conflict.log");
 if (templateResolver.TryResolve(
     sampleBlobPath,
     webLogOptions.BlobPathTemplates,
     out var sampleMatch,
     traceLogger: Console.WriteLine))
 {
-    var resolved = templateResolver.ResolveDeterministicConflicts([sampleMatch!]);
-    Console.WriteLine($"Deterministic conflict strategy active: prefer lowest template order, then blob path sort. Keys resolved: {resolved.Count}");
+    var matchedCandidates = new List<BlobPathMatch> { sampleMatch! };
+
+    if (templateResolver.TryResolve(
+        sampleBlobPathConflict,
+        webLogOptions.BlobPathTemplates,
+        out var conflictMatch,
+        traceLogger: Console.WriteLine))
+    {
+        matchedCandidates.Add(conflictMatch!);
+    }
+
+    var resolved = templateResolver.ResolveDeterministicConflicts(matchedCandidates);
+    Console.WriteLine(
+        $"Deterministic conflict strategy active: prefer lowest template order, then blob path sort. Keys resolved: {resolved.Count}");
+
+    var persistenceService = new WebLogDownloadService();
+    var persistence = await persistenceService.PersistAsync(webLogOptions.SaveAllBlobsDirectory!, resolved);
+    Console.WriteLine($"Persistence root ready: {persistence.OutputRootPath}");
+    Console.WriteLine($"Persisted files: {persistence.WrittenCount}; overwrites detected: {persistence.OverwrittenCount}");
+    foreach (var persisted in persistence.Files)
+    {
+        Console.WriteLine($"- {persisted.LogicalKey} -> {persisted.FilePath}");
+    }
 }
 else
 {
@@ -177,13 +199,13 @@ static string ReadValue(string[] args, ref int index, string argumentName)
     return args[valueIndex];
 }
 
-static string BuildSampleBlobPath(IReadOnlyList<string> pathPrefixes, DateTime dateUtc)
+static string BuildSampleBlobPath(IReadOnlyList<string> pathPrefixes, DateTime dateUtc, string suffix = "sample.log")
 {
     var prefix = pathPrefixes.Count > 0
         ? pathPrefixes[0].TrimEnd('/')
         : "SAMPLE-INSTANCE";
 
-    return $"{prefix}/{dateUtc:yyyy}/{dateUtc:MM}/{dateUtc:dd}/{dateUtc:HH}/sample.log";
+    return $"{prefix}/{dateUtc:yyyy}/{dateUtc:MM}/{dateUtc:dd}/{dateUtc:HH}/{suffix}";
 }
 
 static void ExitWithCliError(string message)
