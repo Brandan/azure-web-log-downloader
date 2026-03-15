@@ -1,3 +1,5 @@
+using Azure.Storage.Blobs;
+
 namespace AzureWebLogDownloader.Services;
 
 public sealed class WebLogDownloadService
@@ -6,7 +8,7 @@ public sealed class WebLogDownloadService
 
     public async Task<PersistenceResult> PersistAsync(
         string outputRootDirectory,
-        IReadOnlyCollection<BlobPathMatch> matchedBlobs,
+        IReadOnlyCollection<BlobDownloadCandidate> matchedBlobs,
         string? fileNamePattern = null,
         CancellationToken cancellationToken = default)
     {
@@ -25,13 +27,13 @@ public sealed class WebLogDownloadService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var timestamp = matchedBlob.TimestampUtc;
+            var timestamp = matchedBlob.Match.TimestampUtc;
             var yearDirectory = Path.Combine(rootPath, timestamp.Year.ToString("D4"));
             Directory.CreateDirectory(yearDirectory);
 
-            var fileName = _fileNameBuilder.BuildFileName(matchedBlob.Instance, timestamp, fileNamePattern);
+            var fileName = _fileNameBuilder.BuildFileName(matchedBlob.Match.Instance, timestamp, fileNamePattern);
             var filePath = Path.Combine(yearDirectory, fileName);
-            var logicalKey = _fileNameBuilder.BuildLogicalKey(matchedBlob.Instance, timestamp);
+            var logicalKey = _fileNameBuilder.BuildLogicalKey(matchedBlob.Match.Instance, timestamp);
 
             var existedBeforeWrite = File.Exists(filePath);
             if (writesByLogicalKey.ContainsKey(logicalKey) || existedBeforeWrite)
@@ -39,11 +41,14 @@ public sealed class WebLogDownloadService
                 overwrittenInRun++;
             }
 
-            // Placeholder content until download stream integration lands in Task 5+.
-            var content = $"blobPath={matchedBlob.BlobPath}\ninstance={matchedBlob.Instance}\ntimestampUtc={timestamp:O}\n";
-            await File.WriteAllTextAsync(filePath, content, cancellationToken).ConfigureAwait(false);
+            var blobClient = matchedBlob.ContainerClient.GetBlobClient(matchedBlob.Match.BlobPath);
+            await using (var sourceStream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+            await using (var destinationStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await sourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
+            }
 
-            writesByLogicalKey[logicalKey] = new PersistedLogFile(logicalKey, filePath, timestamp, matchedBlob.BlobPath);
+            writesByLogicalKey[logicalKey] = new PersistedLogFile(logicalKey, filePath, timestamp, matchedBlob.Match.BlobPath);
         }
 
         var persistedFiles = writesByLogicalKey.Values
@@ -69,3 +74,7 @@ public sealed record PersistenceResult(
     IReadOnlyList<PersistedLogFile> Files,
     int WrittenCount,
     int OverwrittenCount);
+
+public sealed record BlobDownloadCandidate(
+    BlobContainerClient ContainerClient,
+    BlobPathMatch Match);

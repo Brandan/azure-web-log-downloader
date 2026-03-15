@@ -61,7 +61,7 @@ if (sourceTargets.Count == 0)
 }
 
 var templateResolver = new BlobPathTemplateResolver();
-var matchedCandidates = new List<BlobPathMatch>();
+var matchedCandidates = new List<BlobDownloadCandidate>();
 var sourceFailures = 0;
 for (var index = 0; index < sourceTargets.Count; index++)
 {
@@ -100,7 +100,7 @@ for (var index = 0; index < sourceTargets.Count; index++)
             }
 
             matchedInRangeCount++;
-            matchedCandidates.Add(blobMatch);
+            matchedCandidates.Add(new BlobDownloadCandidate(source.ContainerClient, blobMatch));
         }
 
         logger.Info(
@@ -126,7 +126,13 @@ if (matchedCandidates.Count == 0)
     return;
 }
 
-var resolved = templateResolver.ResolveDeterministicConflicts(matchedCandidates);
+var resolvedMatches = templateResolver.ResolveDeterministicConflicts(matchedCandidates.Select(candidate => candidate.Match).ToList());
+var candidateIndex = matchedCandidates
+    .GroupBy(candidate => BuildCandidateKey(candidate.Match), StringComparer.Ordinal)
+    .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+var resolved = resolvedMatches
+    .Select(match => candidateIndex[BuildCandidateKey(match)])
+    .ToList();
 logger.Info(
     "download.resolve",
     $"matchedCandidates={matchedCandidates.Count} logicalKeys={resolved.Count} conflictPolicy=templateOrderThenPath");
@@ -246,6 +252,9 @@ static IReadOnlyList<string> DescribeConfigurationSources(string projectName, st
     sources.Add("environment variables");
     return sources;
 }
+
+static string BuildCandidateKey(BlobPathMatch match) =>
+    $"{match.LogicalMinuteKey}|{match.TemplateOrder}|{match.BlobPath}";
 
 static CliOptions ParseCliOptions(string[] args)
 {
