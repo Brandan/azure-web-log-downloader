@@ -29,9 +29,26 @@ public sealed class AzureBlobClientFactory
             return [];
         }
 
-        var useConnectionString = TryCreateConnectionStringServiceClient(options.ConnectionString, out var blobServiceClient);
-        var credential = useConnectionString ? null : new DefaultAzureCredential();
-        var authMode = useConnectionString ? AuthenticationMode.ConnectionString : AuthenticationMode.DefaultAzureCredential;
+        var hasConnectionString = !string.IsNullOrWhiteSpace(options.ConnectionString);
+        BlobServiceClient? blobServiceClient = null;
+        TokenCredential? credential = null;
+        AuthenticationMode authMode;
+
+        if (hasConnectionString)
+        {
+            // Connection-string mode is used only when both URLs and a connection string are set.
+            if (!TryCreateConnectionStringServiceClient(options.ConnectionString, out blobServiceClient))
+            {
+                return [];
+            }
+
+            authMode = AuthenticationMode.ConnectionString;
+        }
+        else
+        {
+            credential = new DefaultAzureCredential();
+            authMode = AuthenticationMode.DefaultAzureCredential;
+        }
 
         var targets = new List<BlobSourceTarget>();
         foreach (var containerUrl in containerUrls)
