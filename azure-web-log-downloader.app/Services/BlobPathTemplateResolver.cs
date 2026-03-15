@@ -68,7 +68,9 @@ public sealed class BlobPathTemplateResolver
     {
         match = default!;
         var regexPattern = BuildRegexPattern(template);
-        var regex = new Regex(regexPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        var regex = new Regex(
+            regexPattern,
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         var regexMatch = regex.Match(blobPath);
         if (!regexMatch.Success)
         {
@@ -111,10 +113,21 @@ public sealed class BlobPathTemplateResolver
 
     private static string BuildRegexPattern(string template)
     {
-        var escaped = Regex.Escape(NormalizePath(template));
+        var normalized = NormalizePath(template);
+        var placeholders = new Dictionary<string, string>(StringComparer.Ordinal);
+        var placeholderIndex = 0;
         foreach (var token in TokenPatterns)
         {
-            escaped = escaped.Replace(@"\{" + token.Key + @"\}", token.Value, StringComparison.Ordinal);
+            var placeholder = $"__TOKEN_{placeholderIndex}__";
+            normalized = normalized.Replace("{" + token.Key + "}", placeholder, StringComparison.Ordinal);
+            placeholders[placeholder] = token.Value;
+            placeholderIndex++;
+        }
+
+        var escaped = Regex.Escape(normalized);
+        foreach (var placeholder in placeholders)
+        {
+            escaped = escaped.Replace(placeholder.Key, placeholder.Value, StringComparison.Ordinal);
         }
 
         return $"^{escaped}$";

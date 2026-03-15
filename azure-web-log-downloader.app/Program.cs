@@ -1,6 +1,8 @@
 using AzureWebLogDownloader.Configuration;
 using AzureWebLogDownloader.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.FileProviders.Physical;
 
 const string ProjectName = "azure-web-log-downloader";
 
@@ -72,6 +74,38 @@ for (var index = 0; index < sourceTargets.Count; index++)
     {
         await blobClientFactory.VerifyContainerAccessAsync(source.ContainerClient);
         logger.Info("source.scan.ok", $"container={source.ContainerUrl} prefix={source.PathPrefix}");
+        var scannedCount = 0;
+        var matchedInRangeCount = 0;
+        var sampleBlobNames = new List<string>();
+        await foreach (var blobItem in source.ContainerClient.GetBlobsAsync(prefix: source.PathPrefix))
+        {
+            scannedCount++;
+            if (sampleBlobNames.Count < 3)
+            {
+                sampleBlobNames.Add(blobItem.Name);
+            }
+            if (!templateResolver.TryResolve(
+                    blobItem.Name,
+                    webLogOptions.BlobPathTemplates,
+                    out var blobMatch,
+                    traceLogger: message => logger.Info("template.match", message)))
+            {
+                continue;
+            }
+
+            var blobDateUtc = blobMatch!.TimestampUtc.Date;
+            if (blobDateUtc < dateRange.StartDateUtc || blobDateUtc > dateRange.EndDateUtc)
+            {
+                continue;
+            }
+
+            matchedInRangeCount++;
+            matchedCandidates.Add(blobMatch);
+        }
+
+        logger.Info(
+            "source.scan.complete",
+            $"container={source.ContainerUrl} prefix={source.PathPrefix} scanned={scannedCount} matchedInRange={matchedInRangeCount} start={dateRange.StartDateUtc:yyyy-MM-dd} end={dateRange.EndDateUtc:yyyy-MM-dd} sampleBlobs=\"{string.Join(" ; ", sampleBlobNames)}\"");
     }
     catch (Exception ex)
     {
@@ -80,35 +114,6 @@ for (var index = 0; index < sourceTargets.Count; index++)
             "source.scan.failed",
             $"container={source.ContainerUrl} prefix={source.PathPrefix} error=\"{ex.Message}\"");
         continue;
-    }
-
-    var sampleBlobPath = BuildSampleBlobPath(source.PathPrefix, dateRange.EndDateUtc, suffix: $"sample-{index}.log");
-    if (templateResolver.TryResolve(
-        sampleBlobPath,
-        webLogOptions.BlobPathTemplates,
-        out var sampleMatch,
-        traceLogger: message => logger.Info("template.match", message)))
-    {
-        matchedCandidates.Add(sampleMatch!);
-    }
-    else
-    {
-        logger.Warn(
-            "template.unmatched",
-            $"blobPath={sampleBlobPath} templateCount={webLogOptions.BlobPathTemplates.Count}");
-    }
-
-    if (index == 0)
-    {
-        var conflictBlobPath = BuildSampleBlobPath(source.PathPrefix, dateRange.EndDateUtc, suffix: "sample-conflict.log");
-        if (templateResolver.TryResolve(
-            conflictBlobPath,
-            webLogOptions.BlobPathTemplates,
-            out var conflictMatch,
-            traceLogger: message => logger.Info("template.match", message)))
-        {
-            matchedCandidates.Add(conflictMatch!);
-        }
     }
 }
 
@@ -178,23 +183,41 @@ static IConfigurationRoot BuildConfiguration(string projectName, string? configP
     // Global default config in the user's home directory.
     if (!string.IsNullOrWhiteSpace(homeDirectoryConfigPath))
     {
-        configurationBuilder.AddJsonFile(homeDirectoryConfigPath, optional: true, reloadOnChange: false);
+        AddJsonFileByAbsolutePath(configurationBuilder, homeDirectoryConfigPath, optional: true);
     }
 
     // Project-local default config (e.g. ./.azure-web-log-downloader).
-    configurationBuilder.AddJsonFile(currentDirectoryConfigPath, optional: true, reloadOnChange: false);
+    AddJsonFileByAbsolutePath(configurationBuilder, currentDirectoryConfigPath, optional: true);
 
     // Explicit config path takes precedence over default files.
     if (!string.IsNullOrWhiteSpace(configPath))
     {
         var fullConfigPath = Path.GetFullPath(configPath);
-        configurationBuilder.AddJsonFile(fullConfigPath, optional: false, reloadOnChange: false);
+        AddJsonFileByAbsolutePath(configurationBuilder, fullConfigPath, optional: false);
     }
 
     return configurationBuilder
         // Highest precedence for file-based settings.
         .AddEnvironmentVariables()
         .Build();
+}
+
+static void AddJsonFileByAbsolutePath(IConfigurationBuilder configurationBuilder, string fullPath, bool optional)
+{
+    var directory = Path.GetDirectoryName(fullPath);
+    var fileName = Path.GetFileName(fullPath);
+    if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName))
+    {
+        if (!optional)
+        {
+            throw new InvalidOperationException($"Invalid configuration path: '{fullPath}'.");
+        }
+
+        return;
+    }
+
+    var fileProvider = new PhysicalFileProvider(directory, ExclusionFilters.None);
+    configurationBuilder.AddJsonFile(fileProvider, fileName, optional, reloadOnChange: false);
 }
 
 static IReadOnlyList<string> DescribeConfigurationSources(string projectName, string? configPath)
@@ -306,15 +329,6 @@ static string ReadValue(string[] args, ref int index, string argumentName)
 
     index = valueIndex;
     return args[valueIndex];
-}
-
-static string BuildSampleBlobPath(string pathPrefix, DateTime dateUtc, string suffix = "sample.log")
-{
-    var prefix = string.IsNullOrWhiteSpace(pathPrefix)
-        ? "SAMPLE-INSTANCE"
-        : pathPrefix.TrimEnd('/');
-
-    return $"{prefix}/{dateUtc:yyyy}/{dateUtc:MM}/{dateUtc:dd}/{dateUtc:HH}/{suffix}";
 }
 
 static void ExitWithCliError(string message)
