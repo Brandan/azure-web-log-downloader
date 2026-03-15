@@ -16,6 +16,10 @@ public sealed class WebLogOptions
 
     public int DefaultWeeklyLookbackDays { get; init; } = 7;
 
+    public bool EnableFileLogging { get; init; }
+
+    public string? FileLogPath { get; init; }
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();

@@ -61,11 +61,11 @@ Update the file after completing each sub-task, not just after completing an ent
   - [x] 4.3 Implement filename generation format `{instance}-{yyyyMMdd_HHmm}.log`
   - [x] 4.4 Implement logical key behavior based on `(instance, datetime)` and overwrite when key already exists
   - [x] 4.5 Ensure reruns for the same date range do not create duplicate logical files
-- [ ] 5.0 Add operational logging, actionable error handling, and optional file logging toggle
-  - [ ] 5.1 Add structured console progress logs for run start/end, container/prefix scanning, and download counts
-  - [ ] 5.2 Add warning/error logs that include context needed to diagnose failures quickly
-  - [ ] 5.3 Add optional file logging configuration switch and implementation (if enabled in v1 scope)
-  - [ ] 5.4 Ensure non-fatal source errors are handled gracefully so other sources can continue when appropriate
+- [x] 5.0 Add operational logging, actionable error handling, and optional file logging toggle
+  - [x] 5.1 Add structured console progress logs for run start/end, container/prefix scanning, and download counts
+  - [x] 5.2 Add warning/error logs that include context needed to diagnose failures quickly
+  - [x] 5.3 Add optional file logging configuration switch and implementation (if enabled in v1 scope)
+  - [x] 5.4 Ensure non-fatal source errors are handled gracefully so other sources can continue when appropriate
 - [ ] 6.0 Add automated tests and macOS scheduling documentation (`cron` and `launchd`)
   - [ ] 6.1 Add unit tests for ordered path template resolution behavior
   - [ ] 6.2 Add unit tests for filename and logical key generation format

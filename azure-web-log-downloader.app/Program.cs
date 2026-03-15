@@ -21,14 +21,17 @@ if (validationErrors.Count > 0)
     return;
 }
 
-var appName = "azure-web-log-downloader";
-Console.WriteLine($"{appName} scaffold created.");
-Console.WriteLine($"Mode: {cliOptions.Mode}");
+using var logger = OperationalLogger.Create(webLogOptions);
+var runStartedAt = DateTime.UtcNow;
+logger.Info(
+    "run.start",
+    $"app=azure-web-log-downloader mode={cliOptions.Mode} fileLogging={webLogOptions.EnableFileLogging} outputRoot={webLogOptions.SaveAllBlobsDirectory}");
 if (cliOptions.StartDateUtc is not null || cliOptions.EndDateUtc is not null)
 {
-    Console.WriteLine($"Date range override: {cliOptions.StartDateUtc:yyyy-MM-dd} -> {cliOptions.EndDateUtc:yyyy-MM-dd}");
+    logger.Info(
+        "run.input.override",
+        $"start={cliOptions.StartDateUtc:yyyy-MM-dd} end={cliOptions.EndDateUtc:yyyy-MM-dd}");
 }
-Console.WriteLine($"Configured local log root: {webLogOptions.SaveAllBlobsDirectory}");
 
 var dateRangeResolver = new DateRangeResolver();
 var dateRange = dateRangeResolver.Resolve(
@@ -36,61 +39,115 @@ var dateRange = dateRangeResolver.Resolve(
     cliOptions.StartDateUtc,
     cliOptions.EndDateUtc,
     webLogOptions);
-Console.WriteLine(
-    $"Resolved date range ({dateRange.Source}): {dateRange.StartDateUtc:yyyy-MM-dd} -> {dateRange.EndDateUtc:yyyy-MM-dd}");
+logger.Info(
+    "run.range.resolved",
+    $"source={dateRange.Source} start={dateRange.StartDateUtc:yyyy-MM-dd} end={dateRange.EndDateUtc:yyyy-MM-dd}");
 
 var blobClientFactory = new AzureBlobClientFactory();
 var sourceTargets = blobClientFactory.BuildSourceTargets(webLogOptions);
-Console.WriteLine($"Resolved source targets: {sourceTargets.Count}");
-if (sourceTargets.Count > 0)
+logger.Info("source.targets.resolved", $"count={sourceTargets.Count}");
+if (sourceTargets.Count == 0)
 {
-    var authMode = sourceTargets[0].AuthenticationMode;
-    var uniqueContainers = sourceTargets
-        .Select(target => target.ContainerUrl)
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Count();
-    Console.WriteLine($"Azure auth mode: {authMode}; containers: {uniqueContainers}; prefixes: {webLogOptions.PathPrefixes.Count}");
+    logger.Warn("source.targets.empty", "No source targets resolved from BlobContainerUrls and PathPrefixes.");
+    logger.Info("run.end", $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} status=no-op");
+    return;
 }
 
 var templateResolver = new BlobPathTemplateResolver();
-var sampleBlobPath = BuildSampleBlobPath(webLogOptions.PathPrefixes, dateRange.EndDateUtc);
-var sampleBlobPathConflict = BuildSampleBlobPath(webLogOptions.PathPrefixes, dateRange.EndDateUtc, suffix: "sample-conflict.log");
-if (templateResolver.TryResolve(
-    sampleBlobPath,
-    webLogOptions.BlobPathTemplates,
-    out var sampleMatch,
-    traceLogger: Console.WriteLine))
+var matchedCandidates = new List<BlobPathMatch>();
+var sourceFailures = 0;
+for (var index = 0; index < sourceTargets.Count; index++)
 {
-    var matchedCandidates = new List<BlobPathMatch> { sampleMatch! };
+    var source = sourceTargets[index];
+    logger.Info(
+        "source.scan.start",
+        $"index={index + 1}/{sourceTargets.Count} container={source.ContainerUrl} prefix={source.PathPrefix} auth={source.AuthenticationMode}");
 
+    try
+    {
+        await blobClientFactory.VerifyContainerAccessAsync(source.ContainerClient);
+        logger.Info("source.scan.ok", $"container={source.ContainerUrl} prefix={source.PathPrefix}");
+    }
+    catch (Exception ex)
+    {
+        sourceFailures++;
+        logger.Warn(
+            "source.scan.failed",
+            $"container={source.ContainerUrl} prefix={source.PathPrefix} error=\"{ex.Message}\"");
+        continue;
+    }
+
+    var sampleBlobPath = BuildSampleBlobPath(source.PathPrefix, dateRange.EndDateUtc, suffix: $"sample-{index}.log");
     if (templateResolver.TryResolve(
-        sampleBlobPathConflict,
+        sampleBlobPath,
         webLogOptions.BlobPathTemplates,
-        out var conflictMatch,
-        traceLogger: Console.WriteLine))
+        out var sampleMatch,
+        traceLogger: message => logger.Info("template.match", message)))
     {
-        matchedCandidates.Add(conflictMatch!);
+        matchedCandidates.Add(sampleMatch!);
+    }
+    else
+    {
+        logger.Warn(
+            "template.unmatched",
+            $"blobPath={sampleBlobPath} templateCount={webLogOptions.BlobPathTemplates.Count}");
     }
 
-    var resolved = templateResolver.ResolveDeterministicConflicts(matchedCandidates);
-    Console.WriteLine(
-        $"Deterministic conflict strategy active: prefer lowest template order, then blob path sort. Keys resolved: {resolved.Count}");
-
-    var persistenceService = new WebLogDownloadService();
-    var persistence = await persistenceService.PersistAsync(webLogOptions.SaveAllBlobsDirectory!, resolved);
-    Console.WriteLine($"Persistence root ready: {persistence.OutputRootPath}");
-    Console.WriteLine($"Persisted files: {persistence.WrittenCount}; overwrites detected: {persistence.OverwrittenCount}");
-    foreach (var persisted in persistence.Files)
+    if (index == 0)
     {
-        Console.WriteLine($"- {persisted.LogicalKey} -> {persisted.FilePath}");
+        var conflictBlobPath = BuildSampleBlobPath(source.PathPrefix, dateRange.EndDateUtc, suffix: "sample-conflict.log");
+        if (templateResolver.TryResolve(
+            conflictBlobPath,
+            webLogOptions.BlobPathTemplates,
+            out var conflictMatch,
+            traceLogger: message => logger.Info("template.match", message)))
+        {
+            matchedCandidates.Add(conflictMatch!);
+        }
     }
 }
-else
+
+if (matchedCandidates.Count == 0)
 {
-    Console.WriteLine("No template match for sample path. Check Azure:WebLogs:BlobPathTemplates order and token structure.");
+    logger.Warn("download.none", "No candidate blobs resolved from configured templates.");
+    logger.Info(
+        "run.end",
+        $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} sourceFailures={sourceFailures} persisted=0");
+    return;
 }
 
-Console.WriteLine("Next step: implement download workflow services from task list.");
+var resolved = templateResolver.ResolveDeterministicConflicts(matchedCandidates);
+logger.Info(
+    "download.resolve",
+    $"matchedCandidates={matchedCandidates.Count} logicalKeys={resolved.Count} conflictPolicy=templateOrderThenPath");
+
+var persistenceService = new WebLogDownloadService();
+PersistenceResult persistence;
+try
+{
+    persistence = await persistenceService.PersistAsync(webLogOptions.SaveAllBlobsDirectory!, resolved);
+}
+catch (Exception ex)
+{
+    logger.Error("download.persist.failed", ex.Message);
+    logger.Info(
+        "run.end",
+        $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} sourceFailures={sourceFailures} status=failed");
+    Environment.ExitCode = 1;
+    return;
+}
+
+logger.Info(
+    "download.persist.complete",
+    $"outputRoot={persistence.OutputRootPath} written={persistence.WrittenCount} overwritten={persistence.OverwrittenCount}");
+foreach (var persisted in persistence.Files)
+{
+    logger.Info("download.file", $"key={persisted.LogicalKey} path={persisted.FilePath}");
+}
+
+logger.Info(
+    "run.end",
+    $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} sourceFailures={sourceFailures} written={persistence.WrittenCount} overwritten={persistence.OverwrittenCount}");
 
 return;
 
@@ -199,11 +256,11 @@ static string ReadValue(string[] args, ref int index, string argumentName)
     return args[valueIndex];
 }
 
-static string BuildSampleBlobPath(IReadOnlyList<string> pathPrefixes, DateTime dateUtc, string suffix = "sample.log")
+static string BuildSampleBlobPath(string pathPrefix, DateTime dateUtc, string suffix = "sample.log")
 {
-    var prefix = pathPrefixes.Count > 0
-        ? pathPrefixes[0].TrimEnd('/')
-        : "SAMPLE-INSTANCE";
+    var prefix = string.IsNullOrWhiteSpace(pathPrefix)
+        ? "SAMPLE-INSTANCE"
+        : pathPrefix.TrimEnd('/');
 
     return $"{prefix}/{dateUtc:yyyy}/{dateUtc:MM}/{dateUtc:dd}/{dateUtc:HH}/{suffix}";
 }
