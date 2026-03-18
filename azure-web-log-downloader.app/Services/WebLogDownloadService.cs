@@ -23,6 +23,7 @@ public sealed class WebLogDownloadService
 
         var writesByLogicalKey = new Dictionary<string, PersistedLogFile>(StringComparer.Ordinal);
         var overwrittenInRun = 0;
+        var skippedInRun = 0;
 
         var totalFiles = matchedBlobs.Count;
         var fileNumber = 0;
@@ -40,13 +41,39 @@ public sealed class WebLogDownloadService
             var logicalKey = _fileNameBuilder.BuildLogicalKey(matchedBlob.Match.Instance, timestamp);
 
             var existedBeforeWrite = File.Exists(filePath);
-            if (writesByLogicalKey.ContainsKey(logicalKey) || existedBeforeWrite)
+            var duplicateLogicalKey = writesByLogicalKey.ContainsKey(logicalKey);
+            var remoteSizeBytes = matchedBlob.ContentLength;
+            var localSizeBeforeWrite = existedBeforeWrite ? new FileInfo(filePath).Length : (long?)null;
+
+            if (existedBeforeWrite && remoteSizeBytes.HasValue && localSizeBeforeWrite == remoteSizeBytes.Value)
+            {
+                skippedInRun++;
+                progress?.Invoke(new DownloadProgressUpdate(
+                    fileNumber,
+                    totalFiles,
+                    fileName,
+                    localSizeBeforeWrite ?? 0,
+                    remoteSizeBytes,
+                    IsFileCompleted: true));
+
+                writesByLogicalKey[logicalKey] = new PersistedLogFile(
+                    logicalKey,
+                    filePath,
+                    timestamp,
+                    matchedBlob.Match.BlobPath,
+                    remoteSizeBytes,
+                    localSizeBeforeWrite,
+                    DownloadDisposition.SkippedSameSize);
+                continue;
+            }
+
+            if (duplicateLogicalKey || existedBeforeWrite)
             {
                 overwrittenInRun++;
             }
 
             var blobClient = matchedBlob.ContainerClient.GetBlobClient(matchedBlob.Match.BlobPath);
-            var totalBytes = matchedBlob.ContentLength;
+            var totalBytes = remoteSizeBytes;
             progress?.Invoke(new DownloadProgressUpdate(fileNumber, totalFiles, fileName, 0, totalBytes, IsFileCompleted: false));
             await using (var sourceStream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
             await using (var destinationStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -69,18 +96,28 @@ public sealed class WebLogDownloadService
                 totalBytes,
                 IsFileCompleted: true));
 
-            writesByLogicalKey[logicalKey] = new PersistedLogFile(logicalKey, filePath, timestamp, matchedBlob.Match.BlobPath);
+            var localSizeAfterWrite = new FileInfo(filePath).Length;
+            writesByLogicalKey[logicalKey] = new PersistedLogFile(
+                logicalKey,
+                filePath,
+                timestamp,
+                matchedBlob.Match.BlobPath,
+                remoteSizeBytes,
+                localSizeAfterWrite,
+                DownloadDisposition.Downloaded);
         }
 
         var persistedFiles = writesByLogicalKey.Values
             .OrderBy(file => file.LogicalKey, StringComparer.Ordinal)
             .ToList();
+        var downloadedCount = persistedFiles.Count(file => file.Disposition == DownloadDisposition.Downloaded);
 
         return new PersistenceResult(
             rootPath,
             persistedFiles,
-            WrittenCount: persistedFiles.Count,
-            OverwrittenCount: overwrittenInRun);
+            WrittenCount: downloadedCount,
+            OverwrittenCount: overwrittenInRun,
+            SkippedCount: skippedInRun);
     }
 }
 
@@ -88,13 +125,17 @@ public sealed record PersistedLogFile(
     string LogicalKey,
     string FilePath,
     DateTime TimestampUtc,
-    string SourceBlobPath);
+    string SourceBlobPath,
+    long? RemoteSizeBytes,
+    long? LocalSizeBytes,
+    DownloadDisposition Disposition);
 
 public sealed record PersistenceResult(
     string OutputRootPath,
     IReadOnlyList<PersistedLogFile> Files,
     int WrittenCount,
-    int OverwrittenCount);
+    int OverwrittenCount,
+    int SkippedCount);
 
 public sealed record BlobDownloadCandidate(
     BlobContainerClient ContainerClient,
@@ -108,3 +149,9 @@ public sealed record DownloadProgressUpdate(
     long BytesCopied,
     long? TotalBytes,
     bool IsFileCompleted);
+
+public enum DownloadDisposition
+{
+    Downloaded,
+    SkippedSameSize
+}

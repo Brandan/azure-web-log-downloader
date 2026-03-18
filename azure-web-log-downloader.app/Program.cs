@@ -168,15 +168,17 @@ catch (Exception ex)
 
 logger.Info(
     "download.persist.complete",
-    $"outputRoot={persistence.OutputRootPath} written={persistence.WrittenCount} overwritten={persistence.OverwrittenCount}");
+    $"outputRoot={persistence.OutputRootPath} written={persistence.WrittenCount} skipped={persistence.SkippedCount} overwritten={persistence.OverwrittenCount}");
 foreach (var persisted in persistence.Files)
 {
-    logger.Info("download.file", $"key={persisted.LogicalKey} path={persisted.FilePath}");
+    logger.Info(
+        "download.file",
+        $"key={persisted.LogicalKey} status={persisted.Disposition} remoteSize={FormatBytes(persisted.RemoteSizeBytes)} localSize={FormatBytes(persisted.LocalSizeBytes)} path={persisted.FilePath}");
 }
 
 logger.Info(
     "run.end",
-    $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} sourceFailures={sourceFailures} written={persistence.WrittenCount} overwritten={persistence.OverwrittenCount}");
+    $"durationMs={(long)(DateTime.UtcNow - runStartedAt).TotalMilliseconds} sourceFailures={sourceFailures} written={persistence.WrittenCount} skipped={persistence.SkippedCount} overwritten={persistence.OverwrittenCount}");
 
 return;
 
@@ -265,6 +267,16 @@ static IReadOnlyList<string> DescribeConfigurationSources(string projectName, st
 
 static string BuildCandidateKey(BlobPathMatch match) =>
     $"{match.LogicalMinuteKey}|{match.TemplateOrder}|{match.BlobPath}";
+
+static string FormatBytes(long? value)
+{
+    if (!value.HasValue)
+    {
+        return "unknown";
+    }
+
+    return $"{value.Value}B";
+}
 
 static CliOptions ParseCliOptions(string[] args)
 {
